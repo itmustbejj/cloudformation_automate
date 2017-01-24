@@ -93,12 +93,16 @@ Parameters:
   ContactEmail:
     Description: Contact email for Cloudwatch notifications and instance tagging
     Type: String
-  AttachFrontendPublicIp:
+  AssociateFrontendPublicIp:
     Description: Whether to include public ips on the autoscaled frontends
-    Type: Boolean
     Default: false
     Type: String
     AllowedValues: [true, false]
+  LoadBalancerScheme:
+    Description: Specify whether the load balancer uses an internal or internet-facing scheme.
+    Type: String
+    Default: internal
+    AllowedValues: [internet-facing, internal]
 
 Conditions:
   CreateChefServerIamRole:
@@ -302,6 +306,7 @@ Resources:
   PrimaryElasticLoadBalancer:
     Type: AWS::ElasticLoadBalancing::LoadBalancer
     Properties:
+      Scheme: !Ref LoadBalancerScheme
       CrossZone: true
       HealthCheck:
         HealthyThreshold: '2'
@@ -444,11 +449,11 @@ Resources:
                 if [[ -z "${!BOOTSTRAP_TAGS}" || -n "${!EXISTING_BOOTSTRAP}" ]]; then
                   echo "[INFO] configuring this node as a regular Chef frontend"
                   # I am either not a bootstrap, or a bootstrap using existing synced opscode data
-                  if [ -z "${!BOOTSTRAP_TAGS" || -z "${!EXISTING_OPSCODE_DIR}" ]] then
+                  if [ -z "${!BOOTSTRAP_TAGS}" || -z "${!EXISTING_OPSCODE_DIR}" ]] then
                     aws s3 sync s3://${!BUCKET}/${!STACKNAME}/etc_opscode /etc/opscode
                   fi
                   # I am either not a bootstrap, or a bootstrap using existing synced migration data
-                  if [ -z "${!BOOTSTRAP_TAGS" || -z "${!EXISTING_MIGRATION_LEVEL}" ]] then
+                  if [ -z "${!BOOTSTRAP_TAGS}" || -z "${!EXISTING_MIGRATION_LEVEL}" ]] then
                     mkdir -p /var/opt/opscode/upgrades
                     touch /var/opt/opscode/bootstrapped
                     aws s3 cp s3://${!BUCKET}/${!STACKNAME}/migration-level /var/opt/opscode/upgrades/
@@ -463,11 +468,11 @@ Resources:
                 if [[ -n "${!BOOTSTRAP_TAGS}" && -z "${!EXISTING_BOOTSTRAP}" ]]; then
                   echo "[INFO] syncing secrets up to S3"
                   # I am a bootstrap without existing existing opscode data synced to s3
-                  if [ -n "${!BOOTSTRAP_TAGS" && -z "${!EXISTING_OPSCODE_DIR}" ]] then
+                  if [ -n "${!BOOTSTRAP_TAGS}" && -z "${!EXISTING_OPSCODE_DIR}" ]] then
                     aws s3 sync /etc/opscode s3://${!BUCKET}/${!STACKNAME}/etc_opscode
                   fi
                   # I am a bootstrap without existing existing migration data sycned to s3
-                  if [ -z "${!BOOTSTRAP_TAGS" && -z "${!EXISTING_MIGRATION_LEVEL}" ]] then
+                  if [ -z "${!BOOTSTRAP_TAGS}" && -z "${!EXISTING_MIGRATION_LEVEL}" ]] then
                     aws s3 cp /var/opt/opscode/upgrades/migration-level s3://${!BUCKET}/${!STACKNAME}/
                   fi
                 fi
