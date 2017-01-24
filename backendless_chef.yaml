@@ -93,6 +93,12 @@ Parameters:
   ContactEmail:
     Description: Contact email for Cloudwatch notifications and instance tagging
     Type: String
+  AttachFrontendPublicIp:
+    Description: Whether to include public ips on the autoscaled frontends
+    Type: Boolean
+    Default: false
+    Type: String
+    AllowedValues: [true, false]
 
 Conditions:
   CreateChefServerIamRole:
@@ -328,7 +334,7 @@ Resources:
   ServerLaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
-      AssociatePublicIpAddress: true
+      AssociatePublicIpAddress: !Ref AssociateFrontendPublicIp
       EbsOptimized: true
       BlockDeviceMappings:
       - DeviceName: /dev/sda1
