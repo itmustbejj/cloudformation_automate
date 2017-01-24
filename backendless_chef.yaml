@@ -419,6 +419,9 @@ Resources:
                 INSTANCE_ID=`curl -s http://169.254.169.254/latest/meta-data/instance-id`
                 BOOTSTRAP_TAGS=`aws ec2 describe-tags --region ${AWS::Region} --filter "Name=resource-id,Values=$INSTANCE_ID" --output=text | grep BootstrapAutoScaleGroup`
                 STACKNAME=${AWS::StackName}
+                EXISTING_BOOTSTRAP=`aws s3 ls s3://${!BUCKET}/${!STACKNAME}`
+                EXISTING_OPSCODE_DIR=`echo $EXISTING_BOOTSTRAP | grep etc`
+                EXISTING_MIGRATION_LEVEL=`echo $EXISTING_BOOTSTRAP | grep migration`
                 # Determine if we're using a generated bucket or a provided bucket THE HARD WAY because intrinsic functions don't seem to work
                 # https://forums.aws.amazon.com/thread.jspa?threadID=242702
                 if [ -n "${ChefBucket}" ]; then
@@ -430,13 +433,19 @@ Resources:
                   echo "[INFO] Using the provided S3 Bucket ${ChefSecretsBucket}"
                   BUCKET=${ChefSecretsBucket}
                 fi
-                # If we're not bootstrap, sync down the rest of the secrets first before reconfiguring
-                if [ -z "${!BOOTSTRAP_TAGS}" ]; then
+                # If we're not bootstrap or we are a bootstrap with existing secrets,
+                # sync down the rest of the secrets first before reconfiguring
+                if [[ -z "${!BOOTSTRAP_TAGS}" || -n "${!EXISTING_BOOTSTRAP}" ]]; then
                   echo "[INFO] configuring this node as a regular Chef frontend"
-                  aws s3 sync s3://${!BUCKET}/${!STACKNAME}/etc_opscode /etc/opscode
-                  mkdir -p /var/opt/opscode/upgrades
-                  touch /var/opt/opscode/bootstrapped
-                  aws s3 cp s3://${!BUCKET}/${!STACKNAME}/migration-level /var/opt/opscode/upgrades/
+                  # I am either not a bootstrap, or a bootstrap using existing synced opscode data
+                  if [ -z "${!BOOTSTRAP_TAGS" || -z "${!EXISTING_OPSCODE_DIR}" ]] then
+                    aws s3 sync s3://${!BUCKET}/${!STACKNAME}/etc_opscode /etc/opscode
+                  fi
+                  # I am either not a bootstrap, or a bootstrap using existing synced migration data
+                  if [ -z "${!BOOTSTRAP_TAGS" || -z "${!EXISTING_MIGRATION_LEVEL}" ]] then
+                    mkdir -p /var/opt/opscode/upgrades
+                    touch /var/opt/opscode/bootstrapped
+                    aws s3 cp s3://${!BUCKET}/${!STACKNAME}/migration-level /var/opt/opscode/upgrades/
                 else
                   echo "[INFO] configuring this node as a Bootstrap Chef frontend"
                 fi
@@ -444,10 +453,17 @@ Resources:
                 chef-server-ctl reconfigure --accept-license
                 chef-manage-ctl reconfigure --accept-license
                 # the bootstrap instance should sync files after reconfigure
-                if [ -n "${!BOOTSTRAP_TAGS}" ]; then
+                # unless it is a bootstrap using existing secrets.
+                if [[ -n "${!BOOTSTRAP_TAGS}" && -z "${!EXISTING_BOOTSTRAP}" ]]; then
                   echo "[INFO] syncing secrets up to S3"
-                  aws s3 sync /etc/opscode s3://${!BUCKET}/${!STACKNAME}/etc_opscode
-                  aws s3 cp /var/opt/opscode/upgrades/migration-level s3://${!BUCKET}/${!STACKNAME}/
+                  # I am a bootstrap without existing existing opscode data synced to s3
+                  if [ -n "${!BOOTSTRAP_TAGS" && -z "${!EXISTING_OPSCODE_DIR}" ]] then
+                    aws s3 sync /etc/opscode s3://${!BUCKET}/${!STACKNAME}/etc_opscode
+                  fi
+                  # I am a bootstrap without existing existing migration data sycned to s3
+                  if [ -z "${!BOOTSTRAP_TAGS" && -z "${!EXISTING_MIGRATION_LEVEL}" ]] then
+                    aws s3 cp /var/opt/opscode/upgrades/migration-level s3://${!BUCKET}/${!STACKNAME}/
+                  fi
                 fi
             02_configure_cloudwatch_monitoring:
               command: !Sub |
